@@ -1,0 +1,162 @@
+#!/bin/bash -l
+#$ -cwd
+#$ -j y
+#$ -P wax-es
+#$ -o log.txt
+#$ -N NanoporeAnalysis
+#$ -pe omp 4
+#$ -l mem_per_core=8G
+#$ -l h_rt=00:20:00
+# -l scratch_free=200G
+
+echo "=========================================================="
+Start_Time=$(date +"%s")
+echo "Starting on : $(date)"
+echo "Running on node   : $(hostname)"
+echo "Current job ID    : $JOB_ID"
+echo "Current job name  : $JOB_NAME"
+echo "Task index number : $TASK_ID"
+echo "=========================================================="
+
+module load samtools
+module load subread
+module load miniconda
+module load R
+conda activate --stack /projectnb/wax-es/routines/condaenv/minimap2_229
+conda activate --stack /projectnb/wax-es/routines/condaenv/bedtools
+
+set -eu
+
+FULLGENEBODY_GTF="/projectnb/wax-es/routines/GTF_Files_default/08_RefSeqLncRNA76k_FullGeneBody.gtf"
+EXONCOLLAPSED_GTF="/projectnb/wax-es/routines/GTF_Files_default/09_RefSeqLncRNA76k_ExonCollapsed.gtf"
+GENOME_MM9="/projectnb/wax-es/routines/FASTA/genome_mm9.fa"
+CHROM_SIZES_MM9="/projectnb/wax-es/routines/FASTA/mm9.chrom.sizes"
+STRINGTIE_BIN=/projectnb/wax-es/routines/BIN/stringtie
+
+for fq in `find . -name "*.fastq"`; do
+
+  ## extract name
+  fname=$(basename $fq)
+  fname_noext="${fname%.*}"
+
+  OUTBAM="${fname_noext}.bam"
+  OUTBAM_FILTERED="${fname_noext}.sorted.bam"
+  # OUTBAM_SORTED_FILTERED="${fname_noext}.sorted.filtered.bam"
+  OUTBAM_SPLICED="${fname_noext}.sorted.filtered.spliced.bam"
+  OUTBAM_UNSPLICED="${fname_noext}.sorted.filtered.unspliced.bam"
+
+  OGTF_UNSPLICED="${fname_noext}.NOREF.unspliced.gtf"
+  OBED12_UNSPLICED="${fname_noext}.NOREF.unspliced.bed"
+  OBB_UNSPLICED="${fname_noext}.NOREF.unspliced.bb"
+
+  OGTF_SPLICED="${fname_noext}.NOREF.spliced.gtf"
+  OBED12_SPLICED="${fname_noext}.NOREF.spliced.bed"
+  OBB_SPLICED="${fname_noext}.NOREF.spliced.bb"
+
+  ## create directory to store the results
+  MAIN_URL="NanoporeResults/${USER}"
+  PROJECT_URL="${MAIN_URL}/${fname_noext}"
+  OUTDIR="/net/waxman-server/mnt/data/waxmanlabvm_home/${PROJECT_URL}"
+  OUTURL="http://waxmanlabvm.bu.edu/${PROJECT_URL}"
+  EMAILURL="http://waxmanlabvm.bu.edu/${MAIN_URL}"
+
+  rm -rf tmp && mkdir -p tmp
+  
+  pushd tmp
+
+  ln -s ../bin/ ./
+  ln -s ../Scripts ./
+  ln -s ../FASTQ ./
+
+  ## ALIGNING 
+  minimap2 -ax splice ${GENOME_MM9} "./FASTQ/${fname}" -uf --secondary=no | samtools view -Sb - > ${OUTBAM} 
+
+  ## filtering reads
+  samtools view -b -F 2304 -q 30 ${OUTBAM}> ${OUTBAM_FILTERED} 
+
+  ## split bam to spliced and unspliced reads
+  samtools view -h ${OUTBAM_FILTERED} | awk '$6 ~ /N/ || /^@/' | samtools view -bS - > tmp_spliced.bam
+  samtools view -h ${OUTBAM_FILTERED} | awk '$6 !~ /N/ || /^@/' | samtools view -bS - > tmp_unspliced.bam
+
+  ## sorting reads
+  samtools sort tmp_unspliced.bam -o ${OUTBAM_UNSPLICED}
+  samtools sort tmp_spliced.bam -o ${OUTBAM_SPLICED}
+  rm -rf tmp_*splice*.bam
+
+  ## indexing BAM
+  samtools index ${OUTBAM_UNSPLICED}
+  samtools index ${OUTBAM_SPLICED}
+
+  ## run StringTie without any GTF reference
+  $STRINGTIE_BIN -L ${OUTBAM_UNSPLICED} -o ${OGTF_UNSPLICED}
+  $STRINGTIE_BIN -L ${OUTBAM_SPLICED} -o ${OGTF_SPLICED}
+
+  ## convert GTF to bed12 and produce similar xlsx file with
+  # extra information
+  Rscript ./Scripts/gtf2bed12_v3.R ${OGTF_UNSPLICED} ${OBED12_UNSPLICED}
+  Rscript ./Scripts/gtf2bed12_v3.R ${OGTF_SPLICED} ${OBED12_SPLICED}
+
+  ## convert bed12 to bb
+  bedToBigBed ${OBED12_UNSPLICED} ${CHROM_SIZES_MM9} ${OBB_UNSPLICED}
+  bedToBigBed ${OBED12_SPLICED} ${CHROM_SIZES_MM9} ${OBB_SPLICED}
+
+  rm ${OUTBAM} ${OUTBAM_FILTERED}
+
+  ## calculate counts for 76K FullGeneBody and ExonCollapsed GTF files
+   
+  FGB_UNS="gene_counts.Full.FullGeneBody.Unspliced.${fname_noext}.tsv" 
+  EC_UNS="gene_counts.Full.ExonCollapsed.Unspliced.${fname_noext}.tsv"
+  FGB_SP="gene_counts.Full.FullGeneBody.Spliced.${fname_noext}.tsv" 
+  EC_SP="gene_counts.Full.ExonCollapsed.Spliced.${fname_noext}.tsv"
+   
+  FGB_UNS_FILTERED="gene_counts.Filtered.FullGeneBody.Unspliced.${fname_noext}.tsv" 
+  EC_UNS_FILTERED="gene_counts.Filtered.ExonCollapsed.Unspliced.${fname_noext}.tsv"
+  FGB_SP_FILTERED="gene_counts.Filtered.FullGeneBody.Spliced.${fname_noext}.tsv" 
+  EC_SP_FILTERED="gene_counts.Filtered.ExonCollapsed.Spliced.${fname_noext}.tsv"
+
+  featureCounts -O -a ${FULLGENEBODY_GTF} -o ${FGB_UNS} -t exon -g gene_id -s 0 -M --largestOverlap ${OUTBAM_UNSPLICED}
+  featureCounts -O -a ${EXONCOLLAPSED_GTF} -o ${EC_UNS} -t exon -g gene_id -s 0 -M --largestOverlap ${OUTBAM_UNSPLICED}
+  featureCounts -O -a ${FULLGENEBODY_GTF} -o ${FGB_SP} -t exon -g gene_id -s 0 -M --largestOverlap ${OUTBAM_SPLICED}
+  featureCounts -O -a ${EXONCOLLAPSED_GTF} -o ${EC_SP} -t exon -g gene_id -s 0 -M --largestOverlap ${OUTBAM_SPLICED}
+
+  ## Filter out genes without any counts
+  cat ${FGB_UNS} | grep -v "#" | cut -f 1,7 | awk '{if ($2 > 0) print}'  >  ${FGB_UNS_FILTERED}
+  cat ${EC_UNS} | grep -v "#" | cut -f 1,7 | awk '{if ($2 > 0) print}'  >  ${EC_UNS_FILTERED}
+  cat ${FGB_SP} | grep -v "#" | cut -f 1,7 | awk '{if ($2 > 0) print}'  >  ${FGB_SP_FILTERED}
+  cat ${EC_SP} | grep -v "#" | cut -f 1,7 | awk '{if ($2 > 0) print}'  >  ${EC_SP_FILTERED}
+  
+  ## create tracklines
+  echo "track name=${fname_noext}.UNSPLICED.bam type=bam description=${fname_noext}.UNSPLICED bigDataUrl=${OUTURL}/${OUTBAM_UNSPLICED}" > tracklines.txt 
+  echo "track type=bigBed name=${fname_noext}.UNSPLICED.bed description=${fname_noext}.UNSPLICED visibility=full itemRgb=on bigDataUrl=${OUTURL}/${OBB_UNSPLICED}" >> tracklines.txt
+  
+  echo "track name=${fname_noext}.SPLICED.BAM type=bam description=${fname_noext}.SPLICED bigDataUrl=${OUTURL}/${OUTBAM_SPLICED}" >> tracklines.txt 
+  echo "track type=bigBed name=${fname_noext}.SPLICED.BB description=${fname_noext}.SPLICED visibility=full itemRgb=on bigDataUrl=${OUTURL}/${OBB_SPLICED}" >> tracklines.txt
+
+  ## aggregate stringie and featureCounts reports into one xlsx file
+  Rscript ./Scripts/Combining_reports.R
+
+  rm -rf *.Filtered.*tsv *.StringTie*tsv
+
+  mkdir -p FeatureCounts_reports
+  mv gene_counts* ./FeatureCounts_reports
+
+  mkdir -p StringTie_reports
+  mv *.bed *.gtf ./StringTie_reports
+
+  rm -rf ${OUTDIR} && mkdir -p ${OUTDIR}
+  cp -a *.bb tracklines.txt *bam* *xlsx FeatureCounts_reports StringTie_reports ${OUTDIR}
+
+  popd
+
+  rm -rf tmp
+  
+done
+
+#echo "The Nanopore results can be found here: ${EMAILURL}" | mail -s "Nanopore results" "${USER}@bu.edu"
+cp ./README.txt ${OUTDIR}/UCSC_UPLOADING_CUSTOM_TRACK_INFO.txt 
+
+
+End_Time=$(date +"%s")
+diff=$(($End_Time-$Start_Time))
+echo "$(($diff / 3600)) hours, $((($diff / 60) % 60)) minutes and $(($diff % 60)) seconds elapsed."
+echo "=========================================================="
