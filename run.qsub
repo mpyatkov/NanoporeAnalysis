@@ -145,7 +145,7 @@ for fq in `find . -name "*.fastq"`; do
 
   rm -rf ${OUTDIR} && mkdir -p ${OUTDIR}
   cp -a *.bb tracklines.txt *bam* *xlsx FeatureCounts_reports StringTie_reports ${OUTDIR}
-
+  cp ../README.txt ${OUTDIR}/UCSC_UPLOADING_CUSTOM_TRACK_INFO.txt
   popd
 
   rm -rf tmp
@@ -153,8 +153,6 @@ for fq in `find . -name "*.fastq"`; do
 done
 
 #echo "The Nanopore results can be found here: ${EMAILURL}" | mail -s "Nanopore results" "${USER}@bu.edu"
-cp ./README.txt ${OUTDIR}/UCSC_UPLOADING_CUSTOM_TRACK_INFO.txt 
-
 
 End_Time=$(date +"%s")
 diff=$(($End_Time-$Start_Time))

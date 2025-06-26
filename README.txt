@@ -10,6 +10,5 @@ How to upload tracks:
 1. Open UCSC browser and go to our lab session
 2. Inside the search input type "DEFAULT_RNASEQ"
 3. Open this session and go to "My data" -> "Custom tracks"
-4. Go to http://waxmanlabvm.bu.edu/mpyatkov/Nanopore/ in browser and choose the file you need to display as track
-4. Open the *track.txt file and copy the url into "Custom tracks" window
+4. Go to http://waxmanlabvm.bu.edu/NanoporeResults/<USERNAME>/<FASTQ>/tracklines.txt in browser and copy content into "Custom tracks" window
 5. Click "Submit"
