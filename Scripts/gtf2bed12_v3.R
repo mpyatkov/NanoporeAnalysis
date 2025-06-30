@@ -12,12 +12,8 @@ install_and_load <- function(packages) {
 }
 
 # Use the function
-required_packages <- c("dplyr", "purrr", "readr", "stringr", "writexl")
+required_packages <- c("dplyr", "purrr", "readr", "stringr", "writexl", "tidyr")
 install_and_load(required_packages)
-
-library(dplyr)
-library(stringr)
-library(readr)
 
 # Function to convert GTF to BED12
 gtf_to_bed12 <- function(gtf_file) {
