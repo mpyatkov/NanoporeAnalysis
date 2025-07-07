@@ -101,6 +101,10 @@ for fq in `find . -name "*.fastq"`; do
     OUTURL="http://waxmanlabvm.bu.edu/${PROJECT_URL}"
     EMAILURL="http://waxmanlabvm.bu.edu/${MAIN_URL}"
 
+
+    results_dir="$(pwd)/results/${fname_noext}"
+    mkdir -p ${results_dir}
+
     rm -rf tmp && mkdir -p tmp
     
     pushd tmp
@@ -193,7 +197,9 @@ for fq in `find . -name "*.fastq"`; do
 
     rm -rf ${OUTDIR} && mkdir -p ${OUTDIR}
     cp -a *.bb tracklines.txt *bam* *xlsx FeatureCounts_reports StringTie_reports ${OUTDIR}
-    cp ../README.txt ${OUTDIR}/UCSC_UPLOADING_CUSTOM_TRACK_INFO.txt
+    cp ../README.txt ${OUTDIR}/UCSC_UPLOADING_CUSTOM_TRACK_INSTRUCTIONS.txt
+    cp -a ../docs/*.pptx tracklines.txt *xlsx ${results_dir} 
+    
     popd
 
     rm -rf tmp
