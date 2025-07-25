@@ -109,7 +109,6 @@ for fq in `find . -name "*.fastq"`; do
     
     pushd tmp
 
-    ln -s ../bin/ ./
     ln -s ../Scripts ./
     ln -s ../FASTQ ./
 
@@ -135,6 +134,17 @@ for fq in `find . -name "*.fastq"`; do
     ## run StringTie without any GTF reference
     $STRINGTIE_BIN -L ${OUTBAM_UNSPLICED} -o ${OGTF_UNSPLICED}
     $STRINGTIE_BIN -L ${OUTBAM_SPLICED} -o ${OGTF_SPLICED}
+
+    ## if stringtie did not output any isoforms, rerun it without -L option
+    if [ $(wc -l <${OGTF_UNSPLICED}) -eq 2 ]; then
+        echo "WARNIGN: UNSPLICED GTF FILE DOES NOT HAVE ANY ISOFORMS"
+        $STRINGTIE_BIN ${OUTBAM_UNSPLICED} -o ${OGTF_UNSPLICED}
+    fi
+
+    if [ $(wc -l <${OGTF_SPLICED}) -eq 2 ]; then
+        echo "WARNIGN: SPLICED GTF FILE DOES NOT HAVE ANY ISOFORMS"
+        $STRINGTIE_BIN ${OUTBAM_SPLICED} -o ${OGTF_SPLICED}
+    fi
 
     ## convert GTF to bed12 and produce similar xlsx file with
     # extra information
