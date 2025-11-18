@@ -60,7 +60,11 @@ echo "=========================================================="
 module load samtools
 module load subread
 module load miniconda
-module load R
+module load R/4.4
+
+## for new users it is required to create directory for installing packages
+mkdir -p ~/R/x86_64-pc-linux-gnu-library/4.4
+
 conda activate --stack /projectnb/wax-es/routines/condaenv/minimap2_229
 conda activate --stack /projectnb/wax-es/routines/condaenv/bedtools
 
